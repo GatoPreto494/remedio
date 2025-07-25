@@ -68,7 +68,7 @@
             return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
         }
 
-        // Função para formatar a data (dd/mm)
+        // Função para formatar a data (dd/mm) - Mantida caso queira usar futuramente
         function formatarData(date) {
             return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
         }
@@ -95,12 +95,22 @@
 
             const btnTomei = document.createElement('button');
             btnTomei.innerText = 'Tomei Agora';
-            btnTomei.onclick = () => tomarRemedio(remedioData.id);
+            // Adiciona a confirmação aqui
+            btnTomei.onclick = () => {
+                if (confirm(`Tem certeza que tomou ${remedioData.nome} agora?`)) {
+                    tomarRemedio(remedioData.id);
+                }
+            };
             botoesAcaoDiv.appendChild(btnTomei);
 
             const btnExcluir = document.createElement('button');
             btnExcluir.innerText = 'Excluir';
-            btnExcluir.onclick = () => excluirRemedio(remedioData.id);
+            // Adiciona a confirmação aqui
+            btnExcluir.onclick = () => {
+                if (confirm(`Tem certeza que deseja excluir ${remedioData.nome}?`)) {
+                    excluirRemedio(remedioData.id);
+                }
+            };
             botoesAcaoDiv.appendChild(btnExcluir);
 
             infoDiv.appendChild(textoRemedio);
@@ -122,16 +132,16 @@
                 const agora = Date.now();
                 const tempoTotal = remedioData.intervalo * 60 * 60 * 1000; // Tempo total em milissegundos
                 const tempoDecorrido = agora - remedioData.ultimaMs;
-                const tempoRestante = remedioData.ultimaMs + tempoTotal - agora;
+                const tempoRestanteMs = remedioData.ultimaMs + tempoTotal - agora;
 
                 let perc;
                 if (tempoDecorrido >= tempoTotal) { // Se o tempo já passou
                     perc = 0; // Barra vazia
                     progresso.classList.remove('quase-acabando');
-                    progresso.classList.add('acabou'); // Vermelho
+                    progresso.classList.add('acabou'); // Vermelho para atrasado
                     tempoRestanteSpan.innerHTML = `<span class="dose-atrasada">DOSE ATRASADA!</span>`;
                 } else {
-                    perc = ((tempoTotal - tempoDecorrido) / tempoTotal) * 100;
+                    perc = (tempoRestanteMs / tempoTotal) * 100; // Porcentagem do tempo restante
                     progresso.classList.remove('acabou');
 
                     // Altera a cor com base no tempo restante
@@ -141,9 +151,9 @@
                         progresso.classList.remove('quase-acabando');
                     }
 
-                    const horas = Math.floor(tempoRestante / (1000 * 60 * 60));
-                    const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
-                    const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+                    const horas = Math.floor(tempoRestanteMs / (1000 * 60 * 60));
+                    const minutos = Math.floor((tempoRestanteMs % (1000 * 60 * 60)) / (1000 * 60));
+                    const segundos = Math.floor((tempoRestanteMs % (1000 * 60)) / 1000);
 
                     tempoRestanteSpan.innerText = ` | Próxima dose em: ${horas.toString().padStart(2, '0')}h ${minutos.toString().padStart(2, '0')}m ${segundos.toString().padStart(2, '0')}s`;
                 }
@@ -175,6 +185,11 @@
                 // Remove o remédio do DOM e adiciona novamente para atualizar a exibição
                 const divRemedio = document.querySelector(`.remedio[data-id="${idRemedio}"]`);
                 if (divRemedio) {
+                    // Antes de remover, limpa o intervalo para evitar que ele continue executando
+                    const remedioSalvo = remedios.find(r => r.id === idRemedio);
+                    if (remedioSalvo && remedioSalvo.intervalId) {
+                        clearInterval(remedioSalvo.intervalId);
+                    }
                     divRemedio.remove();
                 }
                 adicionarRemedioAoDOM(remedio);
@@ -183,6 +198,12 @@
 
         // Função para excluir o remédio
         function excluirRemedio(idRemedio) {
+            // Limpa o intervalo antes de remover o remédio do array e do DOM
+            const remedioParaExcluir = remedios.find(r => r.id === idRemedio);
+            if (remedioParaExcluir && remedioParaExcluir.intervalId) {
+                clearInterval(remedioParaExcluir.intervalId);
+            }
+
             remedios = remedios.filter(r => r.id !== idRemedio);
             salvarRemedios(); // Salva as alterações
             const divRemedio = document.querySelector(`.remedio[data-id="${idRemedio}"]`);
@@ -204,7 +225,6 @@
             ultimaDoseDate.setHours(hora, minuto, 0, 0);
 
             // Ajusta a data da última dose se a hora informada já passou hoje
-            // (Isso foi mantido do seu código original, mas pode ser revisado se preferir que sempre seja a data atual)
             if (ultimaDoseDate.getTime() > Date.now()) {
                 ultimaDoseDate.setDate(ultimaDoseDate.getDate() - 1);
             }
@@ -219,7 +239,7 @@
                 ultimaHora: ultimaHoraInput, // Armazena a string original para exibição
                 ultimaMs: ultimaMs,
                 proximaMs: proximaMs,
-                intervalId: null // Para armazenar o ID do setInterval
+                intervalId: null // Para armazenar o ID do setInterval e permitir limpá-lo
             };
 
             remedios.push(novoRemedio);
@@ -231,6 +251,15 @@
 
         // Carrega os remédios ao carregar a página
         window.addEventListener('load', carregarRemedios);
+
+        // Limpa os intervalos ao sair da página para evitar vazamento de memória (boa prática)
+        window.addEventListener('beforeunload', () => {
+            remedios.forEach(remedio => {
+                if (remedio.intervalId) {
+                    clearInterval(remedio.intervalId);
+                }
+            });
+        });
     </script>
 </body>
 </html>
