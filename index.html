@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Remédios</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f3f3f3; }
+        h1 { color: #333; }
+        .remedio { margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        label { display: block; margin-bottom: 5px; }
+        input, button, select { padding: 5px; margin-bottom: 10px; width: 100%; max-width: 300px; }
+        .barra { height: 20px; background: #ccc; border-radius: 5px; overflow: hidden; }
+        .progresso { height: 100%; background: #4caf50; width: 100%; transition: width 1s; } /* Inicia cheia */
+        .progresso.quase-acabando { background: #ffc107; /* Laranja/Amarelo */ }
+        .progresso.acabou { background: #f44336; /* Vermelho */ }
+        .info-remedio { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .botoes-acao { text-align: right; }
+        .botoes-acao button { max-width: 150px; margin-top: 5px; }
+        .tempo-restante { font-weight: bold; }
+        .dose-atrasada { color: #f44336; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Controle de Remédios</h1>
+    <form id="formRemedio">
+        <label for="nome">Nome do Remédio:</label>
+        <input type="text" id="nome" required>
+
+        <label for="intervalo">Intervalo (em horas):</label>
+        <input type="number" id="intervalo" min="1" required>
+
+        <label for="ultima">Última dose (HH:MM):</label>
+        <input type="time" id="ultima" required>
+
+        <button type="submit">Adicionar Remédio</button>
+    </form>
+
+    <div id="listaRemedios"></div>
+
+    <script>
+        const form = document.getElementById('formRemedio');
+        const lista = document.getElementById('listaRemedios');
+        let remedios = []; // Array para armazenar os remédios
+
+        // Função para salvar os remédios no localStorage
+        function salvarRemedios() {
+            localStorage.setItem('remedios', JSON.stringify(remedios));
+        }
+
+        // Função para carregar os remédios do localStorage
+        function carregarRemedios() {
+            const remediosSalvos = localStorage.getItem('remedios');
+            if (remediosSalvos) {
+                remedios = JSON.parse(remediosSalvos);
+                remedios.forEach(remedio => {
+                    // Garante que o ID único seja restaurado ou gerado
+                    if (!remedio.id) {
+                        remedio.id = Date.now() + Math.random();
+                    }
+                    adicionarRemedioAoDOM(remedio);
+                });
+            }
+        }
+
+        // Função para formatar a hora e minuto
+        function formatarHoraMinuto(date) {
+            return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+        }
+
+        // Função para formatar a data (dd/mm)
+        function formatarData(date) {
+            return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+        }
+
+        // Função para adicionar um remédio ao DOM (interface)
+        function adicionarRemedioAoDOM(remedioData) {
+            const div = document.createElement('div');
+            div.className = 'remedio';
+            div.dataset.id = remedioData.id; // Adiciona um ID para facilitar a localização
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'info-remedio';
+
+            const textoRemedio = document.createElement('p');
+            textoRemedio.innerHTML = `<strong>${remedioData.nome}</strong> | Intervalo: ${remedioData.intervalo}h | Última dose: ${remedioData.ultimaHora}`;
+
+            const tempoRestanteSpan = document.createElement('span');
+            tempoRestanteSpan.className = 'tempo-restante';
+            textoRemedio.appendChild(tempoRestanteSpan);
+
+
+            const botoesAcaoDiv = document.createElement('div');
+            botoesAcaoDiv.className = 'botoes-acao';
+
+            const btnTomei = document.createElement('button');
+            btnTomei.innerText = 'Tomei Agora';
+            btnTomei.onclick = () => tomarRemedio(remedioData.id);
+            botoesAcaoDiv.appendChild(btnTomei);
+
+            const btnExcluir = document.createElement('button');
+            btnExcluir.innerText = 'Excluir';
+            btnExcluir.onclick = () => excluirRemedio(remedioData.id);
+            botoesAcaoDiv.appendChild(btnExcluir);
+
+            infoDiv.appendChild(textoRemedio);
+            infoDiv.appendChild(botoesAcaoDiv);
+            div.appendChild(infoDiv);
+
+
+            const barra = document.createElement('div');
+            barra.className = 'barra';
+            const progresso = document.createElement('div');
+            progresso.className = 'progresso';
+            barra.appendChild(progresso);
+            div.appendChild(barra);
+
+            lista.appendChild(div);
+
+            // Função interna para atualizar a barra e o texto
+            function atualizarExibicao() {
+                const agora = Date.now();
+                const tempoTotal = remedioData.intervalo * 60 * 60 * 1000; // Tempo total em milissegundos
+                const tempoDecorrido = agora - remedioData.ultimaMs;
+                const tempoRestante = remedioData.ultimaMs + tempoTotal - agora;
+
+                let perc;
+                if (tempoDecorrido >= tempoTotal) { // Se o tempo já passou
+                    perc = 0; // Barra vazia
+                    progresso.classList.remove('quase-acabando');
+                    progresso.classList.add('acabou'); // Vermelho
+                    tempoRestanteSpan.innerHTML = `<span class="dose-atrasada">DOSE ATRASADA!</span>`;
+                } else {
+                    perc = ((tempoTotal - tempoDecorrido) / tempoTotal) * 100;
+                    progresso.classList.remove('acabou');
+
+                    // Altera a cor com base no tempo restante
+                    if (perc <= 20) { // Menos de 20% restante (quase acabando)
+                        progresso.classList.add('quase-acabando'); // Laranja/Amarelo
+                    } else {
+                        progresso.classList.remove('quase-acabando');
+                    }
+
+                    const horas = Math.floor(tempoRestante / (1000 * 60 * 60));
+                    const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+                    const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+
+                    tempoRestanteSpan.innerText = ` | Próxima dose em: ${horas.toString().padStart(2, '0')}h ${minutos.toString().padStart(2, '0')}m ${segundos.toString().padStart(2, '0')}s`;
+                }
+
+                progresso.style.width = perc + '%';
+            }
+
+            // Atualiza a exibição inicialmente e a cada 1 segundo
+            atualizarExibicao();
+            // Limpa qualquer intervalo anterior para evitar múltiplos intervalos para o mesmo remédio
+            if (remedioData.intervalId) {
+                clearInterval(remedioData.intervalId);
+            }
+            remedioData.intervalId = setInterval(atualizarExibicao, 1000); // Atualiza a cada 1 segundo para maior precisão
+        }
+
+        // Função para tomar o remédio
+        function tomarRemedio(idRemedio) {
+            const remedioIndex = remedios.findIndex(r => r.id === idRemedio);
+            if (remedioIndex > -1) {
+                const remedio = remedios[remedioIndex];
+                const agora = new Date();
+                remedio.ultimaMs = agora.getTime();
+                remedio.ultimaHora = formatarHoraMinuto(agora);
+                remedio.proximaMs = remedio.ultimaMs + remedio.intervalo * 60 * 60 * 1000;
+
+                salvarRemedios(); // Salva as alterações
+                
+                // Remove o remédio do DOM e adiciona novamente para atualizar a exibição
+                const divRemedio = document.querySelector(`.remedio[data-id="${idRemedio}"]`);
+                if (divRemedio) {
+                    divRemedio.remove();
+                }
+                adicionarRemedioAoDOM(remedio);
+            }
+        }
+
+        // Função para excluir o remédio
+        function excluirRemedio(idRemedio) {
+            remedios = remedios.filter(r => r.id !== idRemedio);
+            salvarRemedios(); // Salva as alterações
+            const divRemedio = document.querySelector(`.remedio[data-id="${idRemedio}"]`);
+            if (divRemedio) {
+                divRemedio.remove();
+            }
+        }
+
+        // Event listener para o formulário
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const nome = document.getElementById('nome').value;
+            const intervalo = parseFloat(document.getElementById('intervalo').value);
+            const ultimaHoraInput = document.getElementById('ultima').value; // Hora da última dose como string
+
+            const [hora, minuto] = ultimaHoraInput.split(':').map(Number);
+            const ultimaDoseDate = new Date();
+            ultimaDoseDate.setHours(hora, minuto, 0, 0);
+
+            // Ajusta a data da última dose se a hora informada já passou hoje
+            // (Isso foi mantido do seu código original, mas pode ser revisado se preferir que sempre seja a data atual)
+            if (ultimaDoseDate.getTime() > Date.now()) {
+                ultimaDoseDate.setDate(ultimaDoseDate.getDate() - 1);
+            }
+
+            const ultimaMs = ultimaDoseDate.getTime();
+            const proximaMs = ultimaMs + intervalo * 60 * 60 * 1000;
+
+            const novoRemedio = {
+                id: Date.now() + Math.random(), // Adiciona um ID único para cada remédio
+                nome: nome,
+                intervalo: intervalo,
+                ultimaHora: ultimaHoraInput, // Armazena a string original para exibição
+                ultimaMs: ultimaMs,
+                proximaMs: proximaMs,
+                intervalId: null // Para armazenar o ID do setInterval
+            };
+
+            remedios.push(novoRemedio);
+            salvarRemedios(); // Salva no localStorage
+            adicionarRemedioAoDOM(novoRemedio); // Adiciona ao DOM
+
+            form.reset();
+        });
+
+        // Carrega os remédios ao carregar a página
+        window.addEventListener('load', carregarRemedios);
+    </script>
+</body>
+</html>
