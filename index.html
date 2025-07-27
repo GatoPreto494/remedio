@@ -14,11 +14,13 @@
         .progresso { height: 100%; background: #4caf50; width: 100%; transition: width 1s; } /* Inicia cheia */
         .progresso.quase-acabando { background: #ffc107; /* Laranja/Amarelo */ }
         .progresso.acabou { background: #f44336; /* Vermelho */ }
-        .info-remedio { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .botoes-acao { text-align: right; }
+        .info-remedio { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; } /* Ajuste para alinhar verticalmente */
+        .remedio-texto-info { flex-grow: 1; margin-right: 10px; } /* Para o texto do remédio ocupar espaço */
+        .botoes-acao { text-align: right; display: flex; flex-direction: column; } /* Botões em coluna */
         .botoes-acao button { max-width: 150px; margin-top: 5px; margin-left: 5px; } /* Adicionado margin-left para espaçamento */
         .tempo-restante { font-weight: bold; }
         .dose-atrasada { color: #f44336; font-weight: bold; }
+        .proxima-dose-info { font-size: 0.9em; color: #555; margin-top: 5px; display: block; } /* Para garantir que seja um bloco */
     </style>
 </head>
 <body>
@@ -82,12 +84,23 @@
             const infoDiv = document.createElement('div');
             infoDiv.className = 'info-remedio';
 
+            const textoInfoWrapper = document.createElement('div'); // Wrapper para o texto do remédio
+            textoInfoWrapper.className = 'remedio-texto-info';
+
             const textoRemedio = document.createElement('p');
             textoRemedio.innerHTML = `<strong>${remedioData.nome}</strong> | Intervalo: ${remedioData.intervalo}h | Última dose: ${remedioData.ultimaHora}`;
 
             const tempoRestanteSpan = document.createElement('span');
             tempoRestanteSpan.className = 'tempo-restante';
-            textoRemedio.appendChild(tempoRestanteSpan);
+            textoRemedio.appendChild(tempoRestanteSpan); // Adiciona o tempo restante na mesma linha
+
+            // Novo elemento para mostrar a hora e data da próxima dose
+            const proximaDoseHoraDataSpan = document.createElement('span');
+            proximaDoseHoraDataSpan.className = 'proxima-dose-info';
+            // Será atualizado na função atualizarExibicao
+            textoInfoWrapper.appendChild(textoRemedio);
+            textoInfoWrapper.appendChild(proximaDoseHoraDataSpan);
+
 
             const botoesAcaoDiv = document.createElement('div');
             botoesAcaoDiv.className = 'botoes-acao';
@@ -96,19 +109,43 @@
             const btnTomeiAgora = document.createElement('button');
             btnTomeiAgora.innerText = 'Tomei Agora';
             btnTomeiAgora.onclick = () => {
-                if (confirm(`Tem certeza que tomou ${remedioData.nome} agora?`)) {
-                    tomarRemedio(remedioData.id, new Date()); // Passa a data/hora atual
+                // Ao tomar agora, a data da tomada é o momento atual
+                const agora = new Date();
+                const proximaDosePrevista = new Date(remedioData.ultimaMs + remedioData.intervalo * 60 * 60 * 1000);
+
+                if (agora.getTime() < proximaDosePrevista.getTime()) {
+                    // Se estiver tomando antes da próxima dose prevista
+                    const confirmacao = confirm(`ATENÇÃO: Você está marcando ${remedioData.nome} como tomado antes da próxima dose prevista (${formatarHoraMinuto(proximaDosePrevista)} em ${formatarData(proximaDosePrevista)}).\nDeseja realmente registrar a dose AGORA (${formatarHoraMinuto(agora)} em ${formatarData(agora)})?`);
+                    if (confirmacao) {
+                        tomarRemedio(remedioData.id, agora);
+                    }
+                } else {
+                    // Se estiver tomando no horário ou atrasado, usa a confirmação normal
+                    if (confirm(`Tem certeza que tomou ${remedioData.nome} agora?`)) {
+                        tomarRemedio(remedioData.id, agora);
+                    }
                 }
             };
             botoesAcaoDiv.appendChild(btnTomeiAgora);
 
-            // Botão "Tomado no Horário" - AGORA SEGUE A LÓGICA DA PRÓXIMA DOSE
+            // Botão "Tomado no Horário"
             const btnTomadoNoHorario = document.createElement('button');
             btnTomadoNoHorario.innerText = 'Tomado no Horário';
             btnTomadoNoHorario.onclick = () => {
-                if (confirm(`Tem certeza que tomou ${remedioData.nome} no horário correto da próxima dose?`)) {
-                    const dataProximaDose = new Date(remedioData.ultimaMs + remedioData.intervalo * 60 * 60 * 1000);
-                    tomarRemedio(remedioData.id, dataProximaDose);
+                const dataProximaDosePrevista = new Date(remedioData.ultimaMs + remedioData.intervalo * 60 * 60 * 1000);
+                const agora = new Date();
+
+                // Verificar se a próxima dose prevista ainda está no futuro (e se o usuário clicou para tomar 'no horário')
+                if (agora.getTime() < dataProximaDosePrevista.getTime()) {
+                     const confirmacao = confirm(`ATENÇÃO: Você está marcando ${remedioData.nome} como tomado no horário previsto (${formatarHoraMinuto(dataProximaDosePrevista)} em ${formatarData(dataProximaDosePrevista)}), mas esta hora ainda não chegou.\nDeseja realmente registrar a dose NESTE HORÁRIO FUTURO?`);
+                     if (confirmacao) {
+                        tomarRemedio(remedioData.id, dataProximaDosePrevista);
+                     }
+                } else {
+                    // Se a próxima dose prevista já passou ou é o momento atual, apenas confirma
+                    if (confirm(`Tem certeza que tomou ${remedioData.nome} na hora prevista (${formatarHoraMinuto(dataProximaDosePrevista)} em ${formatarData(dataProximaDosePrevista)})?`)) {
+                        tomarRemedio(remedioData.id, dataProximaDosePrevista);
+                    }
                 }
             };
             botoesAcaoDiv.appendChild(btnTomadoNoHorario);
@@ -123,7 +160,7 @@
             };
             botoesAcaoDiv.appendChild(btnExcluir);
 
-            infoDiv.appendChild(textoRemedio);
+            infoDiv.appendChild(textoInfoWrapper); // Adiciona o wrapper de texto
             infoDiv.appendChild(botoesAcaoDiv);
             div.appendChild(infoDiv);
 
@@ -143,12 +180,18 @@
                 const tempoDecorrido = agora - remedioData.ultimaMs;
                 const tempoRestanteMs = remedioData.ultimaMs + tempoTotal - agora;
 
+                // Calcula a próxima dose para exibição de hora e data
+                const proximaDoseDate = new Date(remedioData.ultimaMs + tempoTotal);
+                const proximaHoraFormatada = formatarHoraMinuto(proximaDoseDate);
+                const proximaDataFormatada = formatarData(proximaDoseDate); // Formato dd/mm
+
                 let perc;
                 if (tempoDecorrido >= tempoTotal) { // Se o tempo já passou
                     perc = 0; // Barra vazia
                     progresso.classList.remove('quase-acabando');
                     progresso.classList.add('acabou'); // Vermelho para atrasado
                     tempoRestanteSpan.innerHTML = `<span class="dose-atrasada">DOSE ATRASADA!</span>`;
+                    proximaDoseHoraDataSpan.innerText = `Próxima dose deveria ter sido às ${proximaHoraFormatada} em ${proximaDataFormatada}`;
                 } else {
                     perc = (tempoRestanteMs / tempoTotal) * 100; // Porcentagem do tempo restante
                     progresso.classList.remove('acabou');
@@ -165,7 +208,9 @@
                     const segundos = Math.floor((tempoRestanteMs % (1000 * 60)) / 1000);
 
                     tempoRestanteSpan.innerText = ` | Próxima dose em: ${horas.toString().padStart(2, '0')}h ${minutos.toString().padStart(2, '0')}m ${segundos.toString().padStart(2, '0')}s`;
+                    proximaDoseHoraDataSpan.innerText = `Próxima dose prevista para: ${proximaHoraFormatada} em ${proximaDataFormatada}`;
                 }
+
                 progresso.style.width = perc + '%';
             }
 
@@ -186,13 +231,14 @@
                 
                 remedio.ultimaMs = dataDaTomada.getTime();
                 remedio.ultimaHora = formatarHoraMinuto(dataDaTomada);
+                // Recalcula proximaMs com base na nova ultimaMs
                 remedio.proximaMs = remedio.ultimaMs + remedio.intervalo * 60 * 60 * 1000;
 
                 salvarRemedios(); // Salva as alterações
-                                
+                
                 // Remove o remédio do DOM e adiciona novamente para atualizar a exibição
                 const divRemedio = document.querySelector(`.remedio[data-id="${idRemedio}"]`);
-                if (divDivRemedio) {
+                if (divRemedio) {
                     // Antes de remover, limpa o intervalo para evitar que ele continue executando
                     const remedioSalvo = remedios.find(r => r.id === idRemedio);
                     if (remedioSalvo && remedioSalvo.intervalId) {
